@@ -27,7 +27,8 @@ import ssl
 
 
 _DEFAULT_CODEC = 'opus'
-_DEFAULT_CIPHERS = '!eNULL:!aNULL:kDHE+aRSA+HIGH'
+_DEFAULT_TLS_CIPHERS = '!eNULL:!aNULL:kDHE+aRSA+HIGH'
+_DEFAULT_SRTP_CIPHER = 'AES_CM_128_HMAC_SHA1_80'
 
 
 def ssl_context_for(purpose, ca_certs, own_cert):
@@ -53,7 +54,7 @@ def ssl_context_for(purpose, ca_certs, own_cert):
     # See http://security.stackexchange.com/questions/5096/rsa-vs-dsa-for-ssh-authentication-keys/46781#46781.
     # TODO: Figure out how to enforce *generically*, better hash suites, and
     # not have outdated, slow, and known weaker ciphers like 3DES.
-    ssl_context.set_ciphers(_DEFAULT_CIPHERS)
+    ssl_context.set_ciphers(_DEFAULT_TLS_CIPHERS)
     ssl_context.set_alpn_protocols(['simplevoip/0'])
 
     return ssl_context
@@ -116,12 +117,13 @@ def ffmpeg_in(speaker, sdp):
     return popen
 
 
-def ffmpeg_out(microphone, address):
+def ffmpeg_out(microphone, address, srtp_params):
     return ffmpeg('-f', 'alsa',
                   '-i', microphone,
                   '-f', 'rtp',
                   '-c:a', _DEFAULT_CODEC,
-                  'rtp://{}:{}'.format(*address))
+                  *srtp_params,
+                  'srtp://{}:{}'.format(*address))
 
 
 def server(sk, address, ssl_context):
@@ -138,7 +140,9 @@ def server(sk, address, ssl_context):
             payload = {}
             if args.public_address:
                 payload['public_address'] = args.public_address
-            payload['audio_sdp'] = audio_sdp(*address)
+            srtp_key = ssl.RAND_bytes(30)
+            srtp_params = gen_srtp_params(srtp_key)
+            payload['audio_sdp'] = audio_sdp(*address, srtp_params=srtp_params)
             # TODO: Wait for application-layer message rather? For now, since
             #       the only thing we do is talk, nothing else, no point in
             #       waiting.
@@ -147,7 +151,7 @@ def server(sk, address, ssl_context):
             response = json_socket.load()
             logging.debug('Got %s', response)
 
-            in_ffmpeg = ffmpeg_in(args.speaker, response['audio_sdp'])
+            inbound_media = ffmpeg_in(args.speaker, response['audio_sdp'])
             logging.debug('ffmpeg listening')
             json_socket.dump({'clear_to_send': True})
             logging.debug('Sent CTS')
@@ -155,12 +159,13 @@ def server(sk, address, ssl_context):
                 pass
             logging.debug('Got CTS')
 
-            out_ffmpeg = ffmpeg_out(args.microphone,
-                                    response.get('public_address', address))
+            outbound_media = ffmpeg_out(args.microphone,
+                                        response.get('public_address', address),
+                                        srtp_params=srtp_params)
             logging.debug('ffmpeg sending')
 
             # TODO: Subprocess polling. Dirty trick with pipes?
-            with in_ffmpeg, out_ffmpeg:
+            with inbound_media, outbound_media:
                 pass
             logging.debug('Shutdown')
 
@@ -176,13 +181,15 @@ def client(sk, address, ssl_context):
         payload = {}
         if args.public_address:
             payload['public_address'] = args.public_address
-        payload['audio_sdp'] = audio_sdp(args.host, args.port)
+        srtp_key = ssl.RAND_bytes(30)
+        srtp_params = gen_srtp_params(srtp_key)
+        payload['audio_sdp'] = audio_sdp(*address, srtp_params=srtp_params)
         json_socket.dump(payload)
         logging.debug('Sent %s', payload)
         response = json_socket.load()
         logging.debug('Got %s', response)
 
-        in_ffmpeg = ffmpeg_in(args.speaker, response['audio_sdp'])
+        inbound_media = ffmpeg_in(args.speaker, response['audio_sdp'])
         logging.debug('ffmpeg listening')
         json_socket.dump({'clear_to_send': True})
         logging.debug('Sent CTS')
@@ -190,45 +197,45 @@ def client(sk, address, ssl_context):
             pass
         logging.debug('Got CTS')
 
-        out_ffmpeg = ffmpeg_out(args.microphone,
-                                response.get('public_address', address))
+        outbound_media = ffmpeg_out(args.microphone,
+                                    response.get('public_address', address),
+                                    srtp_params=srtp_params)
         logging.debug('ffmpeg sending')
 
         # TODO: Subprocess polling. Dirty trick with pipes?
-        with in_ffmpeg, out_ffmpeg:
+        with inbound_media, outbound_media:
             pass
         logging.debug('Shutdown')
 
 
-def audio_sdp(host, port):
+def audio_sdp(host, port, srtp_params):
     # FIXME: Why does it say c=… 127.0.0.1? We're not originating from
     # localhost!
-    ffmpeg = subprocess.Popen(['ffmpeg',
-                               '-loglevel', 'warning',
-                               '-f', 'alsa',
-                               '-i', args.microphone,
-                               '-f', 'rtp',
-                               '-t', '0',
-                               '-c:a', _DEFAULT_CODEC,
-                               'rtp://{}:{}'.format(host, port)],
-                              universal_newlines=True,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE)
-    ffmpeg_stdout, ffmpeg_stderr = ffmpeg.communicate()
-    ffmpeg.wait()
-    if ffmpeg.returncode != 0:
+    popen = ffmpeg('-f', 'alsa',
+                   '-i', args.microphone,
+                   '-f', 'rtp',
+                   '-t', '0',
+                   '-c:a', _DEFAULT_CODEC,
+                   *srtp_params,
+                   'srtp://{}:{}'.format(host, port),
+                   universal_newlines=True,
+                   stdout=subprocess.PIPE,
+                   stderr=subprocess.PIPE)
+    ffmpeg_stdout, ffmpeg_stderr = popen.communicate()
+    popen.wait()
+    if popen.returncode != 0:
         raise subprocess.SubprocessError(ffmpeg_stderr)
     return ffmpeg_stdout
 
 
 # TODO: Use
-def gen_srtp_params(direction):
+def gen_srtp_params(srtp_key):
     # Doesn't seem like ffmpeg supports RFC 5764 (DTLS-SRTP), despite
     # supporting some of the ciphers, so we have to do the key negotiation
     # ourselves, so we just exchange the master key and master salt over a
     # TCP/TLS channel.
-    return ['-srtp_{:direction}_params'.format(direction=direction),
-            b64encode(ssl.RAND_BYTES(30))]
+    return ['-srtp_out_suite', _DEFAULT_SRTP_CIPHER,
+            '-srtp_out_params', b64encode(srtp_key)]
 
 
 def argument_parser():
