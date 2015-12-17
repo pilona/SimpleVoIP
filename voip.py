@@ -26,7 +26,7 @@ import json
 import ssl
 
 
-_DEFAULT_CODEC = 'opus'
+_DEFAULT_CODEC, *_DEFAULT_CODEC_PARAMS = 'opus', '-application', 'voip'
 _DEFAULT_TLS_CIPHERS = '!eNULL:!aNULL:kDHE+aRSA+HIGH'
 _DEFAULT_SRTP_CIPHER = 'AES_CM_128_HMAC_SHA1_80'
 
@@ -122,6 +122,7 @@ def ffmpeg_out(microphone, address, srtp_params):
                   '-i', microphone,
                   '-f', 'rtp',
                   '-c:a', _DEFAULT_CODEC,
+                  *_DEFAULT_CODEC_PARAMS,
                   *srtp_params,
                   'srtp://{}:{}'.format(*address))
 
