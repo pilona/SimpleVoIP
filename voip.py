@@ -133,11 +133,19 @@ def server(sk, address, ssl_context):
     sk.listen(1)
     logging.debug('Listening for one connection at a time')
     while True:
-        connection, address = sk.accept()
+        try:
+            connection, address = sk.accept()
+        except KeyboardInterrupt:
+            logging.info('Shutting down phone; not receiving further calls.')
+            return
+
         logging.debug('TCP connection from %s.', address)
         ssl_socket = ssl_context.wrap_socket(connection, server_side=True)
         logging.debug('TLS handshake')
+        # TODO: Handle peer aborted call
+        # TODO: Proper state machine. Modularized code.
         with ssl_socket:
+            # TODO: Lazy
             logging.info('Call from:\n%s', pformat(ssl_socket.getpeercert()['subject']))
             json_socket = NullFramedJSONSocket(ssl_socket)
             payload = {}
@@ -168,18 +176,28 @@ def server(sk, address, ssl_context):
                                         srtp_params=srtp_params)
             logging.debug('ffmpeg sending.')
 
-            # TODO: Subprocess polling. Dirty trick with pipes?
             with inbound_media, outbound_media:
-                pass
+                try:
+                    assert json_socket.load()['hangup'] is True
+                except KeyboardInterrupt:
+                    pass
+                inbound_media.terminate()
+                outbound_media.terminate()
             logging.debug('Call shutdown.')
+            json_socket.dump({'hangup': True})
 
 
 def client(sk, address, ssl_context):
     # TODO?
     ssl_context.check_hostname = True
     ssl_socket = ssl_context.wrap_socket(sk, server_hostname=args.name)
-    ssl_socket.connect(address)
+    try:
+        ssl_socket.connect(address)
+    except KeyboardInterrupt:
+        logging.info('Aborting call.')
+        return
 
+    # TODO: Handle peer aborted call
     with ssl_socket:
         json_socket = NullFramedJSONSocket(ssl_socket)
         payload = {}
@@ -207,10 +225,15 @@ def client(sk, address, ssl_context):
                                     srtp_params=srtp_params)
         logging.debug('ffmpeg sending.')
 
-        # TODO: Subprocess polling. Dirty trick with pipes?
         with inbound_media, outbound_media:
-            pass
+            try:
+                assert json_socket.load()['hangup'] is True
+            except KeyboardInterrupt:
+                pass
+            inbound_media.terminate()
+            outbound_media.terminate()
         logging.debug('Call shutdown.')
+        json_socket.dump({'hangup': True})
 
 
 def audio_sdp(host, port, srtp_params):
