@@ -20,6 +20,7 @@ from argparse import ArgumentParser
 from base64 import b64encode
 from socket import (socket, SOCK_STREAM, IPPROTO_TCP,
                     getaddrinfo, AI_ADDRCONFIG, AI_PASSIVE, AI_NUMERICHOST)
+from pprint import pformat
 import subprocess
 import logging
 import json
@@ -133,10 +134,11 @@ def server(sk, address, ssl_context):
     logging.debug('Listening for one connection at a time')
     while True:
         connection, address = sk.accept()
-        logging.debug('TCP connectionf from %s', address)
+        logging.debug('TCP connection from %s.', address)
         ssl_socket = ssl_context.wrap_socket(connection, server_side=True)
         logging.debug('TLS handshake')
         with ssl_socket:
+            logging.info('Call from:\n%s', pformat(ssl_socket.getpeercert()['subject']))
             json_socket = NullFramedJSONSocket(ssl_socket)
             payload = {}
             if args.public_address:
@@ -148,27 +150,28 @@ def server(sk, address, ssl_context):
             #       the only thing we do is talk, nothing else, no point in
             #       waiting.
             json_socket.dump(payload)
-            logging.debug('Sent %s', payload)
+            logging.debug('Sent %s.', payload)
+            logging.info('Call accepted.')
             response = json_socket.load()
-            logging.debug('Got %s', response)
+            logging.debug('Got %s.', response)
 
             inbound_media = ffmpeg_in(args.speaker, response['audio_sdp'])
-            logging.debug('ffmpeg listening')
+            logging.debug('ffmpeg listening.')
             json_socket.dump({'clear_to_send': True})
-            logging.debug('Sent CTS')
+            logging.debug('Sent CTS.')
             while not json_socket.load().get('clear_to_send', False):
                 pass
-            logging.debug('Got CTS')
+            logging.debug('Got CTS.')
 
             outbound_media = ffmpeg_out(args.microphone,
                                         response.get('public_address', address),
                                         srtp_params=srtp_params)
-            logging.debug('ffmpeg sending')
+            logging.debug('ffmpeg sending.')
 
             # TODO: Subprocess polling. Dirty trick with pipes?
             with inbound_media, outbound_media:
                 pass
-            logging.debug('Shutdown')
+            logging.debug('Call shutdown.')
 
 
 def client(sk, address, ssl_context):
@@ -186,27 +189,28 @@ def client(sk, address, ssl_context):
         srtp_params = gen_srtp_params(srtp_key)
         payload['audio_sdp'] = audio_sdp(*address, srtp_params=srtp_params)
         json_socket.dump(payload)
-        logging.debug('Sent %s', payload)
+        logging.debug('Sent %s.', payload)
+        logging.info('Calling %s@%s:%s.', ssl_socket.server_hostname, *address)
         response = json_socket.load()
-        logging.debug('Got %s', response)
+        logging.debug('Got %s.', response)
 
         inbound_media = ffmpeg_in(args.speaker, response['audio_sdp'])
-        logging.debug('ffmpeg listening')
+        logging.debug('ffmpeg listening.')
         json_socket.dump({'clear_to_send': True})
-        logging.debug('Sent CTS')
+        logging.debug('Sent CTS.')
         while not json_socket.load().get('clear_to_send', False):
             pass
-        logging.debug('Got CTS')
+        logging.debug('Got CTS.')
 
         outbound_media = ffmpeg_out(args.microphone,
                                     response.get('public_address', address),
                                     srtp_params=srtp_params)
-        logging.debug('ffmpeg sending')
+        logging.debug('ffmpeg sending.')
 
         # TODO: Subprocess polling. Dirty trick with pipes?
         with inbound_media, outbound_media:
             pass
-        logging.debug('Shutdown')
+        logging.debug('Call shutdown.')
 
 
 def audio_sdp(host, port, srtp_params):
