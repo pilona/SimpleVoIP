@@ -86,7 +86,9 @@ class NullFramedJSONSocket:
 
 
 def ffmpeg(*args, **kwargs):
-    return  subprocess.Popen(['ffmpeg', '-loglevel', 'warning'] + list(args),
+    return  subprocess.Popen(['ffmpeg', '-loglevel', 'warning',
+                                        '-nostdin'] +
+                             list(args),
                               **kwargs)
 
 
