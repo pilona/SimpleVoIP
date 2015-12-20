@@ -48,7 +48,7 @@ def ssl_context_for(purpose, ca_certs, own_cert, dh_params=None):
         ssl_context.load_verify_locations(cafile=ca_certs)
     # Force client cert requirement too
     ssl_context.verify_mode = ssl.CERT_REQUIRED
-    ##ssl_context.verify_flags |= ssl.VERIFY_X509_STRICT
+    ssl_context.verify_flags |= ssl.VERIFY_X509_STRICT
     # Since we use only DH KEX later, we have to provide DH params. They aren't
     # automatically generated. There are no compiled in ones. If you don't do
     # this, you get weird "No shared cipher" errors at the client hello.
