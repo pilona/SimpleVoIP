@@ -22,12 +22,17 @@ from base64 import b64encode
 from socket import (socket, AF_INET6, SOCK_STREAM, IPPROTO_TCP,
                     getaddrinfo, AI_PASSIVE)
 from pprint import pformat
+from sys import platform
 import subprocess
 import logging
 import json
 import ssl
 
 
+_DEFAULT_DEVICE = {'linux': 'alsa',
+                   'darwin': 'avfoundation',
+                   'win32': 'dshow',
+                   'cygwin': 'dshow'}[platform]
 _DEFAULT_CODEC, *_DEFAULT_CODEC_PARAMS = 'opus', '-application', 'voip'
 _DEFAULT_PORT = 20000
 _DEFAULT_TLS_CIPHERS = '!eNULL:!aNULL:kDHE+aRSA+HIGH'
@@ -101,9 +106,9 @@ class FFmpeg(subprocess.Popen):
 
 
 class FFmpegSink(FFmpeg):
-    def __init__(self, speaker, sdp):
+    def __init__(self, device, speaker, sdp):
         super().__init__('-f', 'sdp', '-i', 'pipe:',
-                         '-f', 'alsa', speaker,
+                         '-f', device, speaker,
                          stdin=subprocess.PIPE,
                          universal_newlines=True)
         # Not .communicate(), which tries to read stdout, and does a wait().
@@ -112,8 +117,8 @@ class FFmpegSink(FFmpeg):
 
 
 class FFmpegSource(FFmpeg):
-    def __init__(self, microphone, address, srtp_params):
-        super().__init__('-f', 'alsa',
+    def __init__(self, device, microphone, address, srtp_params):
+        super().__init__('-f', device,
                          '-i', microphone,
                          '-f', 'rtp',
                          '-c:a', _DEFAULT_CODEC,
@@ -136,6 +141,7 @@ class VoIPContext:
 
         new.public_address = namespace.public_address
 
+        new.device = namespace.device
         new.microphone = namespace.microphone
         new.speaker = namespace.speaker
 
@@ -242,7 +248,7 @@ class VoIPCall:
     def _audio_sdp(self, host, port, srtp_params):
         # FIXME: Why does it say c=… 127.0.0.1? We're not originating from
         # localhost!
-        ffmpeg = FFmpeg('-f', 'alsa',
+        ffmpeg = FFmpeg('-f', self._voip_context.device,
                         '-i', 'null',
                         '-f', 'rtp',
                         '-t', '0',
@@ -274,7 +280,9 @@ class VoIPCall:
         return response['audio_sdp'], response.get('public_address', None)
 
     def _setup_inbound_media(self, audio_sdp):
-        inbound_media = FFmpegSink(self._voip_context.speaker, audio_sdp)
+        inbound_media = FFmpegSink(self._voip_context.device,
+                                   self._voip_context.speaker,
+                                   audio_sdp)
         logging.debug('ffmpeg listening.')
         self._json_socket.dump({'clear_to_send': True})
         logging.debug('Sent CTS.')
@@ -283,7 +291,8 @@ class VoIPCall:
         return inbound_media
 
     def _setup_outbound_media(self, address, srtp_params):
-        outbound_media = FFmpegSource(self._voip_context.microphone,
+        outbound_media = FFmpegSource(self._voip_context.device,
+                                      self._voip_context.microphone,
                                       address,
                                       srtp_params)
         logging.debug('ffmpeg sending.')
@@ -322,10 +331,10 @@ def argument_parser():
     ap.add_argument('--cert', required=True, help='client/server cert')
     ap.add_argument('--certs', help='CA certs')
 
-    #ap.add_argument('--device', default=_DEFAULT_DEVICE, help='ffmpeg -devices')
-    ap.add_argument('--microphone', default='default', help='arecord -L')
-    ap.add_argument('--speaker', default='default', help='aplay -L')
-    ap.add_argument('--webcam', default='/dev/video0', help='v4l2-ctl --list-devices')
+    ap.add_argument('--device', default=_DEFAULT_DEVICE, help='ffmpeg -devices')
+    ap.add_argument('--microphone', default='default', help='ffmpeg -sources')
+    ap.add_argument('--speaker', default='default', help='ffmpeg -sinks')
+    ap.add_argument('--webcam', default='/dev/video0', help='ffmpeg -sources')
 
     ap.add_argument('-p', '--public-address', nargs=2,
                     metavar=('HOST', 'PORT'))
