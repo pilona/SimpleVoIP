@@ -22,7 +22,7 @@ from base64 import b64encode
 from socket import (socket, AF_INET6, SOCK_STREAM, IPPROTO_TCP,
                     getaddrinfo, AI_PASSIVE)
 from pprint import pformat
-from sys import platform
+from sys import platform, exit
 import subprocess
 import logging
 import json
@@ -375,7 +375,7 @@ if __name__ == '__main__':
                                                  '-keyout', args.cert])
         subprocess.check_call(['openssl', 'dhparam', '-out', args.dh_params,
                                                      '2048'])
-        raise SystemExit()
+        exit()
 
     voip_context = VoIPContext.from_namespace(args)
     if args.listen:
