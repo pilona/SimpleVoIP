@@ -345,18 +345,44 @@ def argument_parser():
     client_ap.add_argument('name')
     client_ap.add_argument('host')
     client_ap.add_argument('port', type=int)
-    client_ap.set_defaults(listen=False)
+    client_ap.set_defaults(listen=False, continuation=client_main)
 
     server_ap = sub_aps.add_parser('server', aliases=['s'])
     server_ap.add_argument('--dh-params', required=True)
     server_ap.add_argument('port', type=int, default=_DEFAULT_PORT, nargs='?')
-    server_ap.set_defaults(listen=True)
+    server_ap.set_defaults(listen=True, continuation=server_main)
 
     init_ap = sub_aps.add_parser('init')
     init_ap.add_argument('--dh-params', required=True)
-    init_ap.set_defaults(init=True)
+    init_ap.set_defaults(continuation=init_main)
 
     return ap
+
+
+def init_main(args):
+    subprocess.check_call(['openssl', 'req', '-new',
+                                              '-x509',
+                                              '-days', '365',
+                                              '-nodes',
+                                              '-out', args.cert,
+                                              '-keyout', args.cert])
+    subprocess.check_call(['openssl', 'dhparam', '-out', args.dh_params,
+                                                 '2048'])
+    exit()
+
+
+def server_main(args):
+    voip_context = VoIPContext.from_namespace(args)
+    voip_server = voip_context.serve()
+    voip_server.run()
+
+
+def client_main(args):
+    voip_context = VoIPContext.from_namespace(args)
+    voip_client = voip_context.call(args.name, (args.host, args.port))
+    voip_call = voip_client.connect()
+    voip_call.connect()
+    voip_call.wait()
 
 
 if __name__ == '__main__':
@@ -365,24 +391,4 @@ if __name__ == '__main__':
 
     if args.log_level is not None:
         logging.basicConfig(level=args.log_level)
-
-    if getattr(args, 'init', False):
-        subprocess.check_call(['openssl', 'req', '-new',
-                                                 '-x509',
-                                                 '-days', '365',
-                                                 '-nodes',
-                                                 '-out', args.cert,
-                                                 '-keyout', args.cert])
-        subprocess.check_call(['openssl', 'dhparam', '-out', args.dh_params,
-                                                     '2048'])
-        exit()
-
-    voip_context = VoIPContext.from_namespace(args)
-    if args.listen:
-        voip_server = voip_context.serve()
-        voip_server.run()
-    else:
-        voip_client = voip_context.call(args.name, (args.host, args.port))
-        voip_call = voip_client.connect()
-        voip_call.connect()
-        voip_call.wait()
+    args.continuation(args)
