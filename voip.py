@@ -205,7 +205,7 @@ class VoIPClient:
                 getaddrinfo(*self._address,
                             family=AF_INET6, proto=IPPROTO_TCP)[0]
         connect_socket = socket(family, type_, proto)
-        ssl_context = voip_context.ssl_context_for(ssl.Purpose.SERVER_AUTH)
+        ssl_context = self._voip_context.ssl_context_for(ssl.Purpose.SERVER_AUTH)
         ssl_context.check_hostname = True
         ssl_socket = ssl_context.wrap_socket(connect_socket,
                                              server_hostname=self._common_name)
