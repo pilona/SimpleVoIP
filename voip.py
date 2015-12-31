@@ -33,7 +33,10 @@ _DEFAULT_DEVICE = {'linux': 'alsa',
                    'darwin': 'avfoundation',
                    'win32': 'dshow',
                    'cygwin': 'dshow'}[platform]
-_DEFAULT_CODEC, *_DEFAULT_CODEC_PARAMS = 'opus', '-application', 'voip'
+_DEFAULT_CODEC, *_DEFAULT_CODEC_PARAMS = ['opus',
+                                          '-application', 'voip',
+                                          '-cutoff', '8000',
+                                          '-b:a', '32k']
 _DEFAULT_PORT = 20000
 _DEFAULT_TLS_CIPHERS = '!eNULL:!aNULL:kDHE+aRSA+HIGH'
 _DEFAULT_SRTP_CIPHER = 'AES_CM_128_HMAC_SHA1_80'
