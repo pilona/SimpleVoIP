@@ -371,6 +371,9 @@ def init_main(args):
                                               '-keyout', args.cert])
     subprocess.check_call(['openssl', 'dhparam', '-out', args.dh_params,
                                                  '2048'])
+    # Empty cert file.
+    with open(args.certs, 'w'):
+        pass
     exit()
 
 
