@@ -268,12 +268,22 @@ class VoIPCall:
         # skip 'SDP:\n'
         return ffmpeg_stdout[5:]
 
-    def _send_sdp(self, srtp_params):
+    # FIXME: So bloody ugly. Why must I support this!?
+    def _send_public_address(self):
+        payload = {'public_address': self._voip_context.public_address}
+        self._json_socket.dump(payload)
+        logging.debug('Sent %s.', payload)
+
+    def _recv_public_address(self):
+        response = self._json_socket.load()
+        logging.debug('Got %s.', response)
+        return response['public_address']
+
+    def _send_sdp(self, srtp_params, public_address=None):
         payload = {}
-        if self._voip_context.public_address:
-            payload['public_address'] = self._voip_context.public_address
         # Don't care about IPv6 flow info nor scope id
-        payload['audio_sdp'] = self._audio_sdp(*self._ssl_socket.getpeername()[:2],
+        address = public_address or self._ssl_socket.getpeername()[:2]
+        payload['audio_sdp'] = self._audio_sdp(*address,
                                                srtp_params=srtp_params)
         self._json_socket.dump(payload)
         logging.debug('Sent %s.', payload)
@@ -281,7 +291,7 @@ class VoIPCall:
     def _recv_sdp(self):
         response = self._json_socket.load()
         logging.debug('Got %s.', response)
-        return response['audio_sdp'], response.get('public_address', None)
+        return response['audio_sdp']
 
     def _setup_inbound_media(self, audio_sdp):
         inbound_media = FFmpegSink(self._voip_context.device,
@@ -303,10 +313,12 @@ class VoIPCall:
         return outbound_media
 
     def _run(self):
+        self._send_public_address()
+        public_address = self._recv_public_address()
         srtp_params = self._gen_srtp_params()
-        self._send_sdp(srtp_params)
-        audio_sdp, public_address = self._recv_sdp()
-        address = public_address or self._ssl_socket.getpeername()
+        self._send_sdp(srtp_params, public_address=public_address)
+        audio_sdp = self._recv_sdp()
+        address = public_address or self._ssl_socket.getpeername()[:2]
         self._inbound_media = self._setup_inbound_media(audio_sdp)
         self._outbound_media = self._setup_outbound_media(address, srtp_params)
 
