@@ -213,7 +213,7 @@ class VoIPClient:
         ssl_socket = ssl_context.wrap_socket(connect_socket,
                                              server_hostname=self._common_name)
         ssl_socket.connect(address)
-        logging.info('Calling %s@%s:%s.', ssl_socket.server_hostname, address)
+        logging.info('Calling %s@%s:%s.', ssl_socket.server_hostname, *address[:2])
         return VoIPCall(ssl_socket, self._voip_context)
 
 
