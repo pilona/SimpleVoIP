@@ -265,7 +265,8 @@ class VoIPCall:
         ffmpeg.wait()
         if ffmpeg.returncode != 0:
             raise subprocess.SubprocessError(ffmpeg_stderr)
-        return ffmpeg_stdout
+        # skip 'SDP:\n'
+        return ffmpeg_stdout[5:]
 
     def _send_sdp(self, srtp_params):
         payload = {}
