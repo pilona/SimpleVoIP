@@ -102,7 +102,7 @@ class NullFramedJSONSocket:
 # I need an excuse to use PascalCase, to make variable naming easier.
 class FFmpeg(subprocess.Popen):
     def __init__(self, *args, **kwargs):
-        super().__init__(['ffmpeg', '-loglevel', 'warning',
+        super().__init__(['ffmpeg', '-loglevel', 'error',
                                     '-nostdin'] +
                          list(args),
                          **kwargs)
