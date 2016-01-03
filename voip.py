@@ -350,7 +350,7 @@ def argument_parser():
     ap.add_argument('--device', default=_DEFAULT_DEVICE, help='ffmpeg -devices')
     ap.add_argument('--microphone', default='default', help='ffmpeg -sources <device>')
     ap.add_argument('--speaker', default='default', help='ffmpeg -sinks <device>')
-    ap.add_argument('--webcam', default='/dev/video0', help='ffmpeg -sources')
+    #ap.add_argument('--webcam', default='/dev/video0', help='ffmpeg -sources')
 
     ap.add_argument('-p', '--public-address', nargs=2,
                     metavar=('HOST', 'PORT'))
