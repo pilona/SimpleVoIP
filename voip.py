@@ -20,7 +20,8 @@ from functools import partial
 from argparse import ArgumentParser
 from base64 import b64encode
 from socket import (socket, AF_INET6, SOCK_STREAM, IPPROTO_TCP,
-                    getaddrinfo, AI_PASSIVE)
+                    getaddrinfo, AI_PASSIVE,
+                    SOL_SOCKET, SO_REUSEADDR)
 from pprint import pformat
 from sys import platform, exit
 import subprocess
@@ -167,6 +168,7 @@ class VoIPContext:
         # contact address aren't the same. Oh well. So people's phonebooks
         # shouldn't rely on peername()s collected from incoming calls.
         listen_socket = socket(family, type_, proto)
+        listen_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         listen_socket.bind(address)
         listen_socket.listen(1)
         return VoIPServer(listen_socket,
