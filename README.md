@@ -47,3 +47,7 @@ trivial experiments.
 Because this is for fun, is intended to solve a specific use case, and isn't
 mean to replace SIP (like it was intended to be used, not like the PSTN),
 Hangouts, or your favourite VoIP protocol or service.
+
+## Why isn't it in PyPi yet?
+
+Because I haven't found a good unused package name.
